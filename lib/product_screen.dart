@@ -1,131 +1,164 @@
 import 'package:flutter/material.dart';
-import 'product_service.dart'; // นำเข้าไฟล์ firebase_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'product_service.dart';
 
-class ProductScreen extends StatelessWidget {
+class ProductScreen extends StatefulWidget {
+  const ProductScreen({super.key});
+
+  @override
+  State<ProductScreen> createState() => _ProductScreenState();
+}
+
+class _ProductScreenState extends State<ProductScreen> {
+  final ProductService _productService = ProductService();
+
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _priceController = TextEditingController();
+
+  void _showProductDialog(
+      {String? docId, String? name, String? description, double? price}) {
+    _nameController.text = name ?? '';
+    _descriptionController.text = description ?? '';
+    _priceController.text = price?.toString() ?? '';
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(docId == null ? 'Add Product' : 'Edit Product'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(labelText: 'Name')),
+              TextField(
+                  controller: _descriptionController,
+                  decoration: const InputDecoration(labelText: 'Description')),
+              TextField(
+                controller: _priceController,
+                decoration: const InputDecoration(labelText: 'Price'),
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                final name = _nameController.text;
+                final description = _descriptionController.text;
+                final price = double.tryParse(_priceController.text) ?? 0;
+
+                if (docId == null) {
+                  _productService.createProduct(name, description, price);
+                } else {
+                  _productService.updateProduct(
+                      docId, name, description, price);
+                }
+                Navigator.pop(context);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Products')),
+      appBar: AppBar(
+        title: const Text('Products'),
+        backgroundColor: Colors.teal[300], // สี teal อ่อน
+      ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: getProductsStream(),
+        stream: _productService.getProducts(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
+          if (!snapshot.hasData)
             return const Center(child: CircularProgressIndicator());
-          }
 
           final data = snapshot.data!.docs;
-          return ListView.builder(
+
+          return ListView.separated(
+            padding: const EdgeInsets.all(8.0), // เพิ่ม padding ให้ ListView
+            separatorBuilder: (_, __) => const SizedBox(height: 8), // ระยะห่างระหว่างรายการ
             itemCount: data.length,
             itemBuilder: (context, index) {
               final product = data[index];
-              String productId = product.id; // ดึงค่า ID ของเอกสาร
-              return ListTile(
-                leading: Icon(Icons.shopping_cart),
-                title: Text(product['name']),
-                subtitle: Text(product['description']),
-                trailing: IconButton(
-                  icon: Icon(Icons.delete),
-                  onPressed: () {
-                    deleteProduct(productId); // ลบสินค้าตาม ID
-                  },
+              String productId = product.id;
+              return Card(
+                margin: const EdgeInsets.symmetric(vertical: 4.0), // ปรับ margin ของ Card
+                elevation: 2, // เพิ่มเงาเล็กน้อย
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16.0, 12.0, 12.0, 12.0), // เพิ่ม padding ด้านซ้าย
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.only(left: 20.0), // เพิ่ม padding ด้านซ้ายให้ ListTile
+                    title: Text(
+                      product['name'],
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 4), // ระยะห่างระหว่างชื่อและ description
+                        Text(
+                          product['description'],
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600], // สีจางสำหรับ description
+                          ),
+                        ),
+                        const SizedBox(height: 4), // ระยะห่างระหว่าง description และราคา
+                        Text(
+                          '${product['price']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.green, // สีเขียวเดิมสำหรับราคา
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit, color: Colors.amber),
+                          onPressed: () {
+                            _showProductDialog(
+                              docId: productId,
+                              name: product['name'],
+                              description: product['description'],
+                              price: product['price'].toDouble(),
+                            );
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () => _productService.deleteProduct(productId),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                onTap: () {
-                  // แก้ไขข้อมูลเมื่อคลิกที่รายการ
-                  _showEditDialog(context, productId, product);
-                },
               );
             },
           );
         },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // แสดง dialog สำหรับเพิ่มสินค้าใหม่
-          _showCreateDialog(context);
-        },
-        child: Icon(Icons.add),
+        onPressed: () => _showProductDialog(),
+        backgroundColor: Colors.pink[300],
+        child: const Icon(Icons.add, color: Colors.white),
       ),
-    );
-  }
-
-  // Dialog สำหรับสร้างสินค้ารายการใหม่
-  void _showCreateDialog(BuildContext context) {
-    TextEditingController nameController = TextEditingController();
-    TextEditingController descriptionController = TextEditingController();
-    TextEditingController priceController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Create New Product'),
-          content: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(controller: nameController, decoration: InputDecoration(labelText: 'Name')),
-              TextField(controller: descriptionController, decoration: InputDecoration(labelText: 'Description')),
-              TextField(controller: priceController, decoration: InputDecoration(labelText: 'Price')),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                String name = nameController.text;
-                String description = descriptionController.text;
-                double price = double.parse(priceController.text);
-                createProduct(name, description, price); // เพิ่มสินค้าลง Firestore
-                Navigator.of(context).pop(); // ปิด dialog
-              },
-              child: Text('Save'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(), // ปิด dialog
-              child: Text('Cancel'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // Dialog สำหรับแก้ไขสินค้ารายการที่เลือก
-  void _showEditDialog(BuildContext context, String productId, QueryDocumentSnapshot product) {
-    TextEditingController nameController = TextEditingController(text: product['name']);
-    TextEditingController descriptionController = TextEditingController(text: product['description']);
-    TextEditingController priceController = TextEditingController(text: product['price'].toString());
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Edit Product'),
-          content: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(controller: nameController, decoration: InputDecoration(labelText: 'Name')),
-              TextField(controller: descriptionController, decoration: InputDecoration(labelText: 'Description')),
-              TextField(controller: priceController, decoration: InputDecoration(labelText: 'Price')),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                String name = nameController.text;
-                String description = descriptionController.text;
-                double price = double.parse(priceController.text);
-                updateProduct(productId, name, description, price); // อัพเดตข้อมูล
-                Navigator.of(context).pop(); // ปิด dialog
-              },
-              child: Text('Save'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(), // ปิด dialog
-              child: Text('Cancel'),
-            ),
-          ],
-        );
-      },
     );
   }
 }
